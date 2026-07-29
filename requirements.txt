@@ -1,0 +1,4 @@
+kafka-python>=3.0.9
+pandas>=2.0
+psycopg>=3.3
+python-dotenv>=1.0
