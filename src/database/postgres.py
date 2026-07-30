@@ -1,35 +1,30 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
-from dotenv import load_dotenv
-import os
 import psycopg
 from psycopg.rows import dict_row
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+from ..config import AppConfig
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
+config = AppConfig()
+logger = logging.getLogger(__name__)
 
 
 class PostgresDatabase:
 
     def __init__(self):
         self.connection = psycopg.connect(
-            host=os.getenv("POSTGRES_HOST", "localhost"),
-            port=os.getenv("POSTGRES_PORT", "5432"),
-            dbname=os.getenv("POSTGRES_DB", "postgres"),
-            user=os.getenv("POSTGRES_USER", "postgres"),
-            password=os.getenv("POSTGRES_PASSWORD", "0000"),
+            host=config.postgres_host,
+            port=config.postgres_port,
+            dbname=config.postgres_db,
+            user=config.postgres_user,
+            password=config.postgres_password,
             row_factory=dict_row,
         )
         self.connection.autocommit = False
 
-    def insert_transaction(self, transaction: dict) -> None:
+    def insert_transactions(self, transactions: list[dict]) -> None:
         query = """
         INSERT INTO raw_transactions (
             time,
@@ -49,17 +44,18 @@ class PostgresDatabase:
             %(V26)s,%(V27)s,%(V28)s,
             %(Amount)s,
             %(Class)s
-        );
+        )
         """
 
         try:
             with self.connection.cursor() as cursor:
-                cursor.execute(query, transaction)
+                cursor.executemany(query, transactions)
             self.connection.commit()
-        except Exception as e:
+            logger.info("Inserted %s transactions into Postgres.", len(transactions))
+        except Exception:
             self.connection.rollback()
-            logging.exception("Failed to insert transaction.")
-            raise e
+            logger.exception("Failed to insert transactions into Postgres.")
+            raise
 
     def close(self):
         if self.connection:

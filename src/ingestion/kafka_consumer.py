@@ -1,27 +1,25 @@
 import json
 import logging
-import sys
-from pathlib import Path
-
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
 
 from kafka import KafkaConsumer
-from database import PostgresDatabase
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+from ..config import AppConfig, configure_logging
+from ..database.postgres import PostgresDatabase
+from .validation import validate_record
 
+configure_logging()
 logger = logging.getLogger(__name__)
+config = AppConfig()
 
-def create_consumer(topic="transactions", bootstrap_servers="localhost:9092", group_id="fraud-detection-group") -> KafkaConsumer:
+def create_consumer(
+    topic: str = config.kafka_topic,
+    bootstrap_servers: str = config.kafka_bootstrap_servers,
+    group_id: str = config.kafka_group_id,
+) -> KafkaConsumer:
     return KafkaConsumer(
         topic,
         bootstrap_servers=bootstrap_servers,
-        auto_offset_reset="earliest",
+        auto_offset_reset=config.kafka_auto_offset_reset,
         enable_auto_commit=False,
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
         group_id=group_id,
@@ -32,13 +30,39 @@ def consume_transactions() -> None:
     database = PostgresDatabase()
 
     try:
-        for message in consumer:
-            transaction = message.value
+        while True:
+            raw_batch = consumer.poll(timeout_ms=1000, max_records=config.batch_size)
+            if not raw_batch:
+                continue
+
+            records = []
+            for messages in raw_batch.values():
+                for message in messages:
+                    record = message.value
+                    valid, reason = validate_record(record)
+                    if not valid:
+                        logger.warning(
+                            "Skipping invalid Kafka message offset=%s partition=%s: %s",
+                            message.offset,
+                            message.partition,
+                            reason,
+                        )
+                        continue
+                    records.append(record)
+
+            if not records:
+                continue
+
             try:
-                database.insert_transaction(transaction)
+                database.insert_transactions(records)
                 consumer.commit()
+                logger.info("Committed %s records to Postgres.", len(records))
             except Exception:
-                logger.exception("Failed to insert transaction; keeping offset uncommitted.")
+                logger.exception("Failed to write batch to Postgres, leaving offsets uncommitted.")
     finally:
         database.close()
         consumer.close()
+
+
+if __name__ == "__main__":
+    consume_transactions()
