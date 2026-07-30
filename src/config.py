@@ -26,6 +26,13 @@ class AppConfig:
     amount_low_threshold: float = float(os.getenv("AMOUNT_LOW_THRESHOLD", "10.0"))
     amount_high_threshold: float = float(os.getenv("AMOUNT_HIGH_THRESHOLD", "100.0"))
     rolling_window: int = int(os.getenv("ROLLING_WINDOW", "5"))
+    model_dir: Path = Path(os.getenv("MODEL_DIR", ROOT_DIR.parent / "models"))
+    model_name: str = os.getenv("MODEL_NAME", "fraud_detector")
+    use_model_registry_db: bool = os.getenv("USE_MODEL_REGISTRY_DB", "false").lower() in ("1", "true", "yes")
+    prometheus_enabled: bool = os.getenv("PROMETHEUS_ENABLED", "false").lower() in ("1", "true", "yes")
+    prometheus_port: int = int(os.getenv("PROMETHEUS_PORT", "8000"))
+    drift_threshold: float = float(os.getenv("DRIFT_THRESHOLD", "0.1"))
+    drift_bins: int = int(os.getenv("DRIFT_BINS", "10"))
 
 
 def configure_logging() -> None:

@@ -42,6 +42,14 @@ SELECT COUNT(*) FROM feature_store;
 SELECT * FROM feature_store LIMIT 10;
 ```
 
+## MLOps support
+
+- Use `src/database/schema_mlops.sql` to create `model_registry` and `inference_logs` tables.
+- `src/mlops/model_registry.py` manages model version storage and metadata.
+- `src/mlops/inference_service.py` loads the latest model, scores feature batches, and writes inference logs.
+- `src/mlops/monitoring.py` exposes Prometheus metrics for inference latency, request counts, and errors.
+- `src/mlops/drift_detection.py` computes PSI-based feature drift between reference and current distributions.
+
 ## Files of interest
 
 - `src/features/feature_engineering.py` — feature functions and orchestration

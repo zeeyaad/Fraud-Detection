@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 
 import psycopg
@@ -138,4 +139,103 @@ class PostgresDatabase:
         except Exception:
             self.connection.rollback()
             logger.exception("Failed to insert processed transactions.")
+            raise
+
+    def insert_model_metadata(
+        self,
+        model_name: str,
+        version: str,
+        model_path: str,
+        metadata: dict,
+        deployed: bool = False,
+    ) -> None:
+        query = """
+        INSERT INTO model_registry (
+            model_name,
+            version,
+            model_path,
+            metadata,
+            deployed
+        ) VALUES (
+            %(model_name)s,
+            %(version)s,
+            %(model_path)s,
+            %(metadata)s,
+            %(deployed)s
+        )
+        ON CONFLICT (model_name, version) DO UPDATE SET
+            model_path = EXCLUDED.model_path,
+            metadata = EXCLUDED.metadata,
+            deployed = EXCLUDED.deployed,
+            updated_at = NOW()
+        """
+
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    {
+                        "model_name": model_name,
+                        "version": version,
+                        "model_path": model_path,
+                        "metadata": json.dumps(metadata),
+                        "deployed": deployed,
+                    },
+                )
+            self.connection.commit()
+            logger.info("Registered model metadata for %s version %s.", model_name, version)
+        except Exception:
+            self.connection.rollback()
+            logger.exception("Failed to register model metadata.")
+            raise
+
+    def insert_predictions(self, records: list[dict]) -> None:
+        if not records:
+            return
+
+        query = """
+        INSERT INTO inference_logs (
+            transaction_hash,
+            model_name,
+            model_version,
+            prediction,
+            score,
+            probability,
+            features,
+            predicted_at
+        ) VALUES (
+            %(transaction_hash)s,
+            %(model_name)s,
+            %(model_version)s,
+            %(prediction)s,
+            %(score)s,
+            %(probability)s,
+            %(features)s,
+            %(predicted_at)s
+        )
+        """
+
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.executemany(
+                    query,
+                    [
+                        {
+                            "transaction_hash": record.get("transaction_hash"),
+                            "model_name": record["model_name"],
+                            "model_version": record["model_version"],
+                            "prediction": record["prediction"],
+                            "score": record.get("score"),
+                            "probability": json.dumps(record.get("probability")) if record.get("probability") is not None else None,
+                            "features": json.dumps(record.get("features")) if record.get("features") is not None else None,
+                            "predicted_at": record.get("predicted_at"),
+                        }
+                        for record in records
+                    ],
+                )
+            self.connection.commit()
+            logger.info("Inserted %s prediction records into inference_logs.", len(records))
+        except Exception:
+            self.connection.rollback()
+            logger.exception("Failed to insert inference records.")
             raise
