@@ -61,6 +61,35 @@ class PostgresDatabase:
         if self.connection:
             self.connection.close()
 
+    def insert_feature_store(self, features: list[dict]) -> None:
+        """Insert feature rows into feature_store with deduplication on transaction_hash."""
+        if not features:
+            return
+
+        # Build insert query mapping some common feature column names; allow extra keys to be ignored
+        query = """
+        INSERT INTO feature_store (
+            transaction_hash, time, amount, amount_log1p, amount_category,
+            transaction_hour, day_of_week, is_weekend, rolling_amount_mean,
+            rolling_tx_count, historical_fraud_rate, is_fraud, created_at, processing_ts
+        ) VALUES (
+            %(transaction_hash)s, %(Time)s, %(Amount)s, %(amount_log1p)s, %(amount_category)s,
+            %(transaction_hour)s, %(day_of_week)s, %(is_weekend)s, %(rolling_amount_mean)s,
+            %(rolling_tx_count)s, %(historical_fraud_rate)s, %(Class)s, %(created_at)s, %(processing_ts)s
+        )
+        ON CONFLICT (transaction_hash) DO NOTHING
+        """
+
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.executemany(query, features)
+            self.connection.commit()
+            logger.info("Inserted %s feature rows.", len(features))
+        except Exception:
+            self.connection.rollback()
+            logger.exception("Failed to insert feature rows into feature_store.")
+            raise
+
     def insert_processed_transactions(self, transactions: list[dict]) -> None:
         """Insert cleaned transactions into processed_transactions.
 

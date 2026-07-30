@@ -23,6 +23,9 @@ class AppConfig:
     postgres_password: str = os.getenv("POSTGRES_PASSWORD", "0000")
     batch_size: int = int(os.getenv("BATCH_SIZE", "500"))
     csv_path: Path = Path(os.getenv("CSV_PATH", ROOT_DIR.parent / "data" / "raw" / "creditcard.csv"))
+    amount_low_threshold: float = float(os.getenv("AMOUNT_LOW_THRESHOLD", "10.0"))
+    amount_high_threshold: float = float(os.getenv("AMOUNT_HIGH_THRESHOLD", "100.0"))
+    rolling_window: int = int(os.getenv("ROLLING_WINDOW", "5"))
 
 
 def configure_logging() -> None:
